@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Passkey PRF</title>
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <style>
+      body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 24px; }
+      .row { display: flex; gap: 12px; align-items: flex-start; margin: 12px 0; flex-wrap: wrap; }
+      input, button, select, textarea { font-size: 16px; padding: 8px 10px; }
+      input, textarea, select { border: 1px solid #ccc; border-radius: 6px; }
+      button { border: 1px solid #999; border-radius: 6px; background: #f6f6f6; cursor: pointer; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      code { background: #f2f2f2; padding: 2px 6px; border-radius: 4px; }
+      .muted { color: #666; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+      .card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; margin-top: 12px; }
+      .col { flex: 1; min-width: 320px; }
+      .small { font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <h1>Passkey + PRF TEST</h1>
+    <div id="status" class="muted small">Loading…</div>
+
+    <!-- Register (left) and Login (right) -->
+    <div class="row">
+      <div class="card col">
+        <h3>Register</h3>
+        <div class="row">
+          <label for="walletName"><b>Wallet name</b></label>
+          <input id="walletName" placeholder="e.g. main" value="main" />
+          <button id="btnRegister">Register</button>
+        </div>
+        <div class="row small muted">Creates a new passkey. Address is derived via PRF and stored locally.</div>
+      </div>
+      <div class="card col">
+        <h3>Login</h3>
+        <div class="row">
+          <label for="loginName"><b>Wallet name</b></label>
+          <input id="loginName" placeholder="type a label or leave blank" />
+          <button id="btnLogin">Login</button>
+        </div>
+        <div class="row small muted">If local mapping is missing, the passkey picker is shown. Name is only a label.</div>
+      </div>
+    </div>
+
+    <!-- Wallet selector standalone -->
+    <div class="card">
+      <h3>Saved wallets</h3>
+      <div class="row">
+        <label for="walletSelect"><b>Select</b></label>
+        <select id="walletSelect" style="min-width:300px;"></select>
+        <button id="btnRefresh">Refresh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label for="msg"><b>Message</b></label>
+        <input id="msg" size="50" value="Hello from passkey wallet" />
+        <button id="btnSign" disabled>Sign</button>
+      </div>
+      <div class="row small muted">Signing uses EIP-191 personal_sign semantics.</div>
+    </div>
+
+    <div class="card">
+      <div class="row"><b>Address:</b> <span id="addr" class="mono">-</span></div>
+      <div class="row"><b>Public key:</b> <span id="pub" class="mono small">-</span></div>
+      <div class="row"><b>Signature:</b> <span id="sig" class="mono small">-</span></div>
+      <div class="row"><b>Verified:</b> <span id="ok" class="mono small">-</span></div>
+      <details class="small">
+        <summary>Debug</summary>
+        <div class="row"><b>Credential ID:</b> <span id="cred" class="mono small">-</span></div>
+        <div class="row"><b>PRF supported:</b> <span id="prf" class="mono small">unknown</span></div>
+      </details>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

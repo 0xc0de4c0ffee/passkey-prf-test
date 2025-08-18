@@ -1,0 +1,19 @@
+{
+  "name": "passkey",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "vite": "^7.1.2"
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0",
+    "@noble/secp256k1": "^2.3.0",
+    "micro-eth-signer": "^0.16.0"
+  }
+}
