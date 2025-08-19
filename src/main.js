@@ -174,6 +174,7 @@ async function passkeyLogin({ label = '', credentialIdB64u = null, rpId = window
       extensions: { prf: { eval: { first: PRF_SALT } } },
     };
   }
+  
   const cred = await navigator.credentials.get({ publicKey, mediation: 'optional' });
   if (!cred) throw new Error('no passkey selected');
   const gotId = toBase64Url(cred.rawId);
