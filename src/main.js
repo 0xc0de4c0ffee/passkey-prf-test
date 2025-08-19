@@ -85,6 +85,7 @@ function saveWalletInfo(info) { localStorage.setItem('wallet_info', JSON.stringi
 function refreshWalletList() {
   const info = loadWalletInfo();
   const names = Object.keys(info).sort();
+  const prev = els.walletSelect.value;
   els.walletSelect.innerHTML = '';
   for (const name of names) {
     const opt = document.createElement('option');
@@ -92,6 +93,19 @@ function refreshWalletList() {
     opt.value = name;
     opt.textContent = `${name} — ${address ? address.slice(0, 10) + '…' : '-'}`;
     els.walletSelect.appendChild(opt);
+  }
+  // restore previous selection or select first
+  let selected = '';
+  if (prev && names.includes(prev)) {
+    els.walletSelect.value = prev;
+    selected = prev;
+  } else if (names.length > 0) {
+    els.walletSelect.value = names[0];
+    selected = names[0];
+  }
+  if (selected) {
+    els.loginName.value = selected;
+    applySelectedWallet(selected);
   }
 }
 
@@ -191,7 +205,7 @@ async function passkeyLogin({ label = '', credentialIdB64u = null, rpId = window
 // ---------- WebAuthn flows (UI wrappers)
 async function registerPasskey() {
   try {
-    const name = (els.walletSelect.value || els.loginName?.value || els.walletName.value || '').trim();
+    const name = (els.walletName.value || '').trim();
     if (!name) throw new Error('Enter a wallet name');
     state.walletName = name;
 
@@ -228,7 +242,7 @@ async function registerPasskey() {
 
 async function loginWallet(nameOverride) {
   try {
-    const name = (nameOverride ?? getSelectedName());
+    const name = (nameOverride ?? (els.loginName?.value || '').trim());
     // name is just a label; allow empty for discoverable login
     state.walletName = name;
 
