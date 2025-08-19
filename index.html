@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Passkey PRF</title>
-    <link rel="icon" type="image/svg+xml" href="/namesys.svg" />
+    <link rel="icon" type="image/svg+xml" href="vite.svg" />
     <style>
       body { font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; margin: 24px; }
       .row { display: flex; gap: 12px; align-items: flex-start; margin: 12px 0; flex-wrap: wrap; }
@@ -16,8 +16,19 @@
       .muted { color: #666; }
       .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
       .card { border: 1px solid #e5e5e5; border-radius: 8px; padding: 12px; margin-top: 12px; }
-      .col { flex: 1; min-width: 320px; }
+      .col { flex: 1; min-width: 300px; }
       .small { font-size: 12px; }
+
+      @media (max-width: 640px) {
+        body { margin: 12px; }
+        h1 { font-size: 20px; }
+        .row { flex-direction: column; align-items: stretch; gap: 8px; margin: 8px 0; }
+        .col { min-width: 100%; }
+        input, select, button, textarea { width: 100%; }
+        .card { padding: 10px; }
+        .mono { font-size: 12px; word-break: break-all; }
+        label { width: 100%; }
+      }
     </style>
   </head>
   <body>
@@ -51,7 +62,7 @@
       <h3>Saved wallets</h3>
       <div class="row">
         <label for="walletSelect"><b>Select</b></label>
-        <select id="walletSelect" style="min-width:300px;"></select>
+        <select id="walletSelect"></select>
         <button id="btnRefresh">Refresh</button>
       </div>
     </div>
