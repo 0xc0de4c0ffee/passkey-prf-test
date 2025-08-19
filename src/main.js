@@ -26,11 +26,6 @@ function fromBase64Url(s) {
   return out;
 }
 
-// Derive checksummed Ethereum address from private key (Uint8Array)
-function addressFromPriv(privBytes) {
-  // micro-eth-signer accepts Uint8Array or 0x-string
-  return addr.fromPrivateKey(privBytes);
-}
 
 // ---------- DOM refs
 const $ = (id) => document.getElementById(id);
@@ -126,57 +121,99 @@ function applySelectedWallet(name) {
   els.btnSign.disabled = false;
 }
 
-// ---------- WebAuthn flows
+// ---------- Standalone Passkey helpers (no DOM/state)
+async function passkeyRegister(label, rpId = window.location.hostname) {
+  const name = (label || '').trim();
+  if (!name) throw new Error('label required');
+  const userId = await userIdFromName(name);
+  const publicKey = {
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp: { name: 'PasskeyWallet', id: rpId },
+    user: { id: userId, name, displayName: name },
+    pubKeyCredParams: [ { type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 } ],
+    authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
+    timeout: 60000,
+    attestation: 'none',
+    extensions: { prf: { eval: { first: PRF_SALT } } },
+  };
+  const cred = await navigator.credentials.create({ publicKey });
+  if (!cred) throw new Error('creation cancelled');
+  const credentialId = toBase64Url(cred.rawId);
+  const prfOut = cred.getClientExtensionResults()?.prf;
+  const prfResultAvailable = !!(prfOut && (prfOut.results?.first));
+  const prfEnabled = !!(prfOut?.enabled || prfResultAvailable);
+  let address = null;
+  if (prfResultAvailable) {
+    const priv = new Uint8Array(prfOut.results.first);
+    address = addr.fromPrivateKey(priv);
+    priv.fill(0);
+  }
+  return { credentialId, address, prfEnabled, prfResultAvailable };
+}
+
+async function passkeyLogin({ label = '', credentialIdB64u = null, rpId = window.location.hostname } = {}) {
+  const name = (label || '').trim();
+  let publicKey;
+  if (credentialIdB64u) {
+    const rawId = fromBase64Url(credentialIdB64u);
+    publicKey = {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId,
+      userVerification: 'required',
+      timeout: 60000,
+      allowCredentials: [ { type: 'public-key', id: rawId, transports: ['internal'] } ],
+      extensions: { prf: { evalByCredential: { [credentialIdB64u]: { first: PRF_SALT } } } },
+    };
+  } else {
+    publicKey = {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rpId,
+      userVerification: 'required',
+      timeout: 60000,
+      allowCredentials: [],
+      extensions: { prf: { eval: { first: PRF_SALT } } },
+    };
+  }
+  const cred = await navigator.credentials.get({ publicKey, mediation: 'optional' });
+  if (!cred) throw new Error('no passkey selected');
+  const gotId = toBase64Url(cred.rawId);
+  const prfExt = cred.getClientExtensionResults()?.prf || {};
+  let results = prfExt.results;
+  if (!results && prfExt.resultsByCredential && credentialIdB64u) results = prfExt.resultsByCredential[credentialIdB64u];
+  if (!results || !results.first) throw new Error('PRF result not returned');
+  const priv = new Uint8Array(results.first);
+  const address = addr.fromPrivateKey(priv);
+  priv.fill(0);
+  return { credentialId: gotId, address };
+}
+
+// ---------- WebAuthn flows (UI wrappers)
 async function registerPasskey() {
   try {
     const name = (els.walletSelect.value || els.loginName?.value || els.walletName.value || '').trim();
     if (!name) throw new Error('Enter a wallet name');
     state.walletName = name;
 
-    const userId = await userIdFromName(name);
-
-    const publicKey = {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rp: { name: 'PasskeyWallet', id: window.location.hostname },
-      user: { id: userId, name, displayName: name },
-      pubKeyCredParams: [ { type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 } ],
-      authenticatorSelection: { authenticatorAttachment: 'platform', residentKey: 'required', userVerification: 'required' },
-      timeout: 60000,
-      attestation: 'none',
-      extensions: { prf: { eval: { first: PRF_SALT } } },
-    };
-
     setStatus('Creating passkey…');
-    const cred = await navigator.credentials.create({ publicKey });
-    if (!cred) throw new Error('Creation cancelled');
+    const res = await passkeyRegister(name);
 
-    const rawIdB64u = toBase64Url(cred.rawId);
     const map = loadWalletMap();
-    if (map[name]) throw new Error('Wallet name already exists');
-    map[name] = rawIdB64u;
+    if (map[name]) throw new Error('A wallet with this label already exists');
+    map[name] = res.credentialId;
     saveWalletMap(map);
-    localStorage.setItem(`passkey_${rawIdB64u}`, name);
+    localStorage.setItem(`passkey_${res.credentialId}`, name);
 
-    const prfOut = cred.getClientExtensionResults()?.prf;
-    const hasPRFResult = !!(prfOut && (prfOut.results?.first));
-    // Spec: during registration, "enabled" indicates PRF availability even if no results are returned
-    state.prfSupported = (prfOut?.enabled ?? hasPRFResult);
-    state.credId = rawIdB64u;
+    state.prfSupported = res.prfEnabled;
+    state.credId = res.credentialId;
 
-    if (hasPRFResult) {
-      // Derive address from PRF; do not persist private key
-      const priv = new Uint8Array(prfOut.results.first);
-      const address = addressFromPriv(priv);
-      // zeroize
-      priv.fill(0);
-      state.pub = null; state.addr = address;
-      // store public info only
+    if (res.address) {
       const info = loadWalletInfo();
-      info[name] = { address };
+      info[name] = { address: res.address };
       saveWalletInfo(info);
       refreshWalletList();
       els.walletSelect.value = name;
       els.btnSign.disabled = false;
+      state.addr = res.address;
       setStatus('Passkey created. Wallet derived from PRF.');
     } else {
       setStatus('Passkey created. PRF output not returned at registration; click "Login" to derive.');
@@ -195,58 +232,30 @@ async function loginWallet(nameOverride) {
     state.walletName = name;
 
     const map = loadWalletMap();
-    let idB64u = map[name];
-    const userId = await userIdFromName(name);
-    let publicKey;
-    if (!idB64u) {
-      // Discoverable login: let user pick a passkey, evaluate PRF via eval
-      publicKey = {
-      challenge: crypto.getRandomValues(new Uint8Array(32)),
-      rpId: window.location.hostname,
-      userVerification: 'required',
-      timeout: 60000,
-      allowCredentials: [],
-      extensions: { prf: { eval: { first: PRF_SALT } } },
-      };
-    } else {
-      // Known credential: request specific id and evaluate PRF per-credential
-      const rawId = fromBase64Url(idB64u);
-      publicKey = {
-        challenge: crypto.getRandomValues(new Uint8Array(32)),
-        rpId: window.location.hostname,
-        userVerification: 'required',
-        timeout: 60000,
-        allowCredentials: [ { type: 'public-key', id: rawId, transports: ['internal'] } ],
-        extensions: { prf: { evalByCredential: { [idB64u]: { first: PRF_SALT } } } },
-      };
-    }
+    let idB64u = name ? map[name] : null;
 
     setStatus('Requesting assertion…');
-    const cred = await navigator.credentials.get({ publicKey, mediation: 'optional' });
+    const res = await passkeyLogin({ label: name, credentialIdB64u: idB64u });
+
     // If we didn't know the credential ID, save it now
     if (!idB64u) {
-      idB64u = toBase64Url(cred.rawId);
-      map[name] = idB64u;
-      saveWalletMap(map);
+      idB64u = res.credentialId;
+      // assign a label if empty
+      let label = name || `wallet-${res.address.slice(2, 6)}`;
+      let i = 1; const original = label;
+      const cur = loadWalletMap();
+      while (cur[label] && cur[label] !== idB64u) label = `${original}-${i++}`;
+      cur[label] = idB64u; saveWalletMap(cur);
+      const info = loadWalletInfo(); info[label] = { address: res.address }; saveWalletInfo(info);
+      refreshWalletList(); els.walletSelect.value = label; els.loginName.value = label; state.walletName = label;
+    } else {
+      // Ensure address stored
+      const info = loadWalletInfo();
+      if (!info[name]?.address) { info[name] = { address: res.address }; saveWalletInfo(info); }
+      refreshWalletList(); els.walletSelect.value = name; els.loginName.value = name;
     }
-    if (!cred) throw new Error('No passkey selected');
 
-    const prfExt = cred.getClientExtensionResults()?.prf || {};
-    let results = prfExt.results;
-    if (!results && prfExt.resultsByCredential) results = prfExt.resultsByCredential[idB64u];
-    if (!results || !results.first) throw new Error('PRF result not returned; authenticator may not support PRF');
-
-    // Use PRF output directly as private key; derive address and forget
-    const priv = new Uint8Array(results.first);
-    const address = addressFromPriv(priv);
-    priv.fill(0);
-    state.pub = null; state.addr = address; state.credId = toBase64Url(cred.rawId); state.prfSupported = true;
-    // store public info only
-    const info = loadWalletInfo();
-    info[name] = { address };
-    saveWalletInfo(info);
-    refreshWalletList();
-    els.walletSelect.value = name;
+    state.addr = res.address; state.credId = idB64u; state.prfSupported = true;
     els.btnSign.disabled = false;
     setDebug();
     setStatus('Logged in.');
@@ -298,7 +307,7 @@ async function signCurrentMessage() {
 
     // Derive ephemeral private key
     const priv = new Uint8Array(results.first);
-    const address = addressFromPriv(priv);
+    const address = addr.fromPrivateKey(priv);
     // Save mapping if unknown
     if (!idB64u) {
       idB64u = toBase64Url(assertion.rawId);
